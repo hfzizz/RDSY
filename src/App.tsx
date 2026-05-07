@@ -23,15 +23,23 @@ interface StoreState {
 }
 
 const SESSION_KEY = 'rdsy_auth'
+const SILENT_KEY = 'rdsy_silent_refresh'
 
 function extractHashToken(): AuthState | null {
   const hash = window.location.hash.slice(1)
   if (!hash) return null
   const p = new URLSearchParams(hash)
+  const error = p.get('error')
+  if (error) {
+    window.history.replaceState(null, '', window.location.pathname)
+    sessionStorage.removeItem(SILENT_KEY)
+    return null
+  }
   const token = p.get('access_token')
   const expiresIn = p.get('expires_in')
   if (token && expiresIn) {
     window.history.replaceState(null, '', window.location.pathname)
+    sessionStorage.removeItem(SILENT_KEY)
     return { status: 'authenticated', accessToken: token, expiresAt: Date.now() + Number(expiresIn) * 1000 }
   }
   return null
@@ -41,11 +49,23 @@ function loadAuthFromSession(): AuthState {
   const fromHash = extractHashToken()
   if (fromHash) return fromHash
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return { status: 'unauthenticated' }
     const parsed = JSON.parse(raw) as AuthState
-    if (parsed.status === 'authenticated' && parsed.expiresAt > Date.now()) {
-      return parsed
+    if (parsed.status === 'authenticated') {
+      if (parsed.expiresAt > Date.now()) return parsed
+      if (!sessionStorage.getItem(SILENT_KEY)) {
+        sessionStorage.setItem(SILENT_KEY, '1')
+        const params = new URLSearchParams({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
+          redirect_uri: window.location.origin,
+          response_type: 'token',
+          scope: 'https://www.googleapis.com/auth/drive.file',
+          prompt: 'none',
+        })
+        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+        return { status: 'authenticated', accessToken: '', expiresAt: Date.now() + 30000 }
+      }
     }
   } catch {
     // ignore
@@ -54,12 +74,9 @@ function loadAuthFromSession(): AuthState {
 }
 
 function startOAuth() {
-  const redirectUri = window.location.origin
-  console.log('[auth] redirect_uri:', redirectUri)
-  console.log('[auth] client_id:', import.meta.env.VITE_GOOGLE_CLIENT_ID)
   const params = new URLSearchParams({
     client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
-    redirect_uri: redirectUri,
+    redirect_uri: window.location.origin,
     response_type: 'token',
     scope: 'https://www.googleapis.com/auth/drive.file',
     include_granted_scopes: 'true',
@@ -74,9 +91,9 @@ export const useStore = create<StoreState>()((set, get) => ({
   folderId: null,
   setAuth: (auth) => {
     if (auth.status === 'authenticated') {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(auth))
+      localStorage.setItem(SESSION_KEY, JSON.stringify(auth))
     } else {
-      sessionStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(SESSION_KEY)
     }
     set({ auth })
   },
