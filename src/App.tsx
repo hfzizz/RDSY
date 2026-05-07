@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
-import { useGoogleLogin } from '@react-oauth/google'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { AuthState, BookEntry, SyncStatus, Sidecar } from './types'
@@ -25,7 +24,22 @@ interface StoreState {
 
 const SESSION_KEY = 'rdsy_auth'
 
+function extractHashToken(): AuthState | null {
+  const hash = window.location.hash.slice(1)
+  if (!hash) return null
+  const p = new URLSearchParams(hash)
+  const token = p.get('access_token')
+  const expiresIn = p.get('expires_in')
+  if (token && expiresIn) {
+    window.history.replaceState(null, '', window.location.pathname)
+    return { status: 'authenticated', accessToken: token, expiresAt: Date.now() + Number(expiresIn) * 1000 }
+  }
+  return null
+}
+
 function loadAuthFromSession(): AuthState {
+  const fromHash = extractHashToken()
+  if (fromHash) return fromHash
   try {
     const raw = sessionStorage.getItem(SESSION_KEY)
     if (!raw) return { status: 'unauthenticated' }
@@ -37,6 +51,17 @@ function loadAuthFromSession(): AuthState {
     // ignore
   }
   return { status: 'unauthenticated' }
+}
+
+function startOAuth() {
+  const params = new URLSearchParams({
+    client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
+    redirect_uri: window.location.origin,
+    response_type: 'token',
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    include_granted_scopes: 'true',
+  })
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
 export const useStore = create<StoreState>()((set, get) => ({
@@ -107,21 +132,6 @@ const syncColors: Record<SyncStatus, string> = {
 }
 
 function SignInScreen() {
-  const setAuth = useStore((s) => s.setAuth)
-
-  const login = useGoogleLogin({
-    flow: 'implicit',
-    scope: 'https://www.googleapis.com/auth/drive.file',
-    onSuccess: (res) => {
-      setAuth({
-        status: 'authenticated',
-        accessToken: res.access_token,
-        expiresAt: Date.now() + res.expires_in * 1000,
-      })
-    },
-    onError: (err) => console.error('[auth] onError:', err),
-    onNonOAuthError: (err) => console.error('[auth] onNonOAuthError:', err),
-  })
 
   return (
     <div style={{
@@ -198,7 +208,7 @@ function SignInScreen() {
         </div>
 
         <button
-          onClick={() => login()}
+          onClick={() => startOAuth()}
           style={{
             display: 'flex',
             alignItems: 'center',
