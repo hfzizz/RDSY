@@ -119,6 +119,8 @@ function SignInScreen() {
         expiresAt: Date.now() + res.expires_in * 1000,
       })
     },
+    onError: (err) => console.error('[auth] onError:', err),
+    onNonOAuthError: (err) => console.error('[auth] onNonOAuthError:', err),
   })
 
   return (
