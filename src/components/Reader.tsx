@@ -554,6 +554,30 @@ export default function Reader() {
     currentPageAtUnmount.current = currentPage
   })
 
+  // Cross-device page sync: poll remote sidecar and jump if another device read ahead
+  useEffect(() => {
+    if (auth.status !== 'authenticated' || !bookId) return
+
+    const pollRemote = async () => {
+      if (!hasLoadedRef.current || !navigator.onLine) return
+      try {
+        const remote = await loadSidecar(auth.accessToken, bookId, book?.sidecarDriveId)
+        setSidecar((prev) => {
+          if (!prev || remote.progress.updatedAt <= prev.progress.updatedAt) return prev
+          if (remote.progress.page !== prev.progress.page) {
+            setCurrentPage(remote.progress.page)
+          }
+          return remote
+        })
+      } catch { /* non-fatal */ }
+    }
+
+    const id = setInterval(pollRemote, 60_000)
+    const onVisible = () => { if (!document.hidden) pollRemote() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
+  }, [auth, bookId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleSidecarChange(updated: Sidecar) {
     setSidecar(updated)
     commitSidecar(bookId!, updated).catch(() => {})
