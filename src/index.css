@@ -1,3 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+
+:root {
+  --bg:         #0c0a07;
+  --surface:    #141109;
+  --card:       #1c1810;
+  --card-hover: #231f12;
+  --border:     #2d2518;
+  --border-mid: #3d3320;
+  --gold:       #c8a84b;
+  --gold-light: #e4c86a;
+  --gold-dim:   #7a6428;
+  --text:       #e8ddc8;
+  --text-mid:   #a89880;
+  --text-dim:   #6a5e4a;
+  --green:      #6aab72;
+  --yellow:     #d4a84a;
+  --red:        #c06868;
+  --grey:       #6a6258;
+  --radius:     6px;
+  --transition: 0.18s ease;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -5,10 +28,23 @@
 }
 
 body {
-  font-family: system-ui, sans-serif;
-  background: #1a1a2e;
-  color: #e0e0e0;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grain overlay on root */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
 }
 
 a {
@@ -17,24 +53,38 @@ a {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f0f1a;
+  background: var(--bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2e3a5a;
+  background: var(--border-mid);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d4f78;
+  background: var(--gold-dim);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2e3a5a #0f0f1a;
+  scrollbar-color: var(--border-mid) var(--bg);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

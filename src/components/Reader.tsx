@@ -567,9 +567,9 @@ export default function Reader() {
       : `${currentPage} / ${totalPages}`
 
   const iconBtnStyle = (active: boolean): React.CSSProperties => ({
-    background: active ? 'rgba(233,69,96,0.15)' : 'none',
+    background: active ? 'rgba(200,168,75,0.12)' : 'none',
     border: 'none',
-    color: active ? '#e94560' : '#9ca3af',
+    color: active ? 'var(--gold)' : 'var(--text-dim)',
     fontSize: '16px',
     cursor: 'pointer',
     padding: '6px',
@@ -578,9 +578,9 @@ export default function Reader() {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '6px',
+    borderRadius: '4px',
     flexShrink: 0,
-    transition: 'color 0.15s, background 0.15s',
+    transition: 'color var(--transition), background var(--transition)',
   })
 
   return (
@@ -591,7 +591,7 @@ export default function Reader() {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: '#1a1a2e',
+        background: 'var(--bg)',
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -608,11 +608,11 @@ export default function Reader() {
           alignItems: 'center',
           gap: '6px',
           padding: '0 8px',
-          height: '52px',
-          background: 'rgba(22,33,62,0.92)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          borderBottom: '1px solid #1e2a4a',
+          height: '50px',
+          background: 'rgba(12,10,7,0.92)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          borderBottom: '1px solid var(--border)',
           transform: topBarVisible ? 'translateY(0)' : 'translateY(-100%)',
           transition: 'transform 0.2s ease',
           pointerEvents: topBarVisible ? 'auto' : 'none',
@@ -624,8 +624,8 @@ export default function Reader() {
           style={{
             background: 'none',
             border: 'none',
-            color: '#9ca3af',
-            fontSize: '20px',
+            color: 'var(--text-dim)',
+            fontSize: '18px',
             cursor: 'pointer',
             padding: '8px',
             minWidth: '44px',
@@ -633,12 +633,12 @@ export default function Reader() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: '6px',
+            borderRadius: '4px',
             flexShrink: 0,
-            transition: 'color 0.15s',
+            transition: 'color var(--transition)',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#e0e0e0')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = '#9ca3af')}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-dim)')}
           aria-label="Back to library"
         >
           ←
@@ -648,9 +648,10 @@ export default function Reader() {
         <div
           style={{
             flex: 1,
-            color: '#e0e0e0',
-            fontSize: '14px',
-            fontWeight: '600',
+            color: 'var(--text-mid)',
+            fontSize: '12px',
+            fontFamily: "'DM Sans', sans-serif",
+            letterSpacing: '0.01em',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -658,7 +659,7 @@ export default function Reader() {
           }}
           title={bookName}
         >
-          {bookName}
+          {bookName.replace(/\.pdf$/i, '')}
         </div>
 
         {/* Zoom controls */}
@@ -676,14 +677,16 @@ export default function Reader() {
           style={{
             background: 'none',
             border: 'none',
-            color: '#9ca3af',
-            fontSize: '12px',
+            color: 'var(--text-dim)',
+            fontSize: '11px',
+            fontFamily: "'DM Sans', sans-serif",
+            letterSpacing: '0.04em',
             cursor: 'pointer',
-            padding: '6px 8px',
+            padding: '6px 6px',
             minHeight: '36px',
-            borderRadius: '6px',
+            borderRadius: '4px',
             flexShrink: 0,
-            minWidth: '52px',
+            minWidth: '46px',
             fontVariantNumeric: 'tabular-nums',
           }}
           aria-label="Reset zoom"
@@ -818,10 +821,10 @@ export default function Reader() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '16px',
+            gap: '12px',
             padding: '10px 16px',
-            background: '#16213e',
-            borderTop: '1px solid #1e2a4a',
+            background: 'var(--surface)',
+            borderTop: '1px solid var(--border)',
             flexShrink: 0,
           }}
         >
@@ -829,22 +832,30 @@ export default function Reader() {
             onClick={() => changePage(-1)}
             disabled={currentPage <= 1}
             style={{
-              padding: '8px 20px',
-              background: currentPage <= 1 ? '#2a2a4e' : '#0f3460',
-              border: 'none',
-              borderRadius: '6px',
-              color: currentPage <= 1 ? '#4b5563' : '#e0e0e0',
-              fontSize: '14px',
-              fontWeight: '500',
+              padding: '8px 18px',
+              background: 'transparent',
+              border: `1px solid ${currentPage <= 1 ? 'var(--border)' : 'var(--border-mid)'}`,
+              borderRadius: '3px',
+              color: currentPage <= 1 ? 'var(--text-dim)' : 'var(--text-mid)',
+              fontSize: '12px',
+              fontFamily: "'DM Sans', sans-serif",
+              letterSpacing: '0.04em',
               cursor: currentPage <= 1 ? 'default' : 'pointer',
-              minHeight: '44px',
-              transition: 'background 0.15s',
+              minHeight: '38px',
+              transition: 'border-color var(--transition), color var(--transition)',
+              opacity: currentPage <= 1 ? 0.4 : 1,
             }}
             onMouseEnter={(e) => {
-              if (currentPage > 1) e.currentTarget.style.background = '#1a4a80'
+              if (currentPage > 1) {
+                e.currentTarget.style.borderColor = 'var(--gold-dim)'
+                e.currentTarget.style.color = 'var(--text)'
+              }
             }}
             onMouseLeave={(e) => {
-              if (currentPage > 1) e.currentTarget.style.background = '#0f3460'
+              if (currentPage > 1) {
+                e.currentTarget.style.borderColor = 'var(--border-mid)'
+                e.currentTarget.style.color = 'var(--text-mid)'
+              }
             }}
             aria-label="Previous page"
           >
@@ -853,11 +864,12 @@ export default function Reader() {
 
           <span
             style={{
-              color: '#6b7280',
-              fontSize: '13px',
-              minWidth: '90px',
+              color: 'var(--text-dim)',
+              fontSize: '11px',
+              minWidth: '80px',
               textAlign: 'center',
               fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '0.04em',
             }}
           >
             {displayLabel}
@@ -867,22 +879,30 @@ export default function Reader() {
             onClick={() => changePage(1)}
             disabled={currentPage >= totalPages}
             style={{
-              padding: '8px 20px',
-              background: currentPage >= totalPages ? '#2a2a4e' : '#0f3460',
-              border: 'none',
-              borderRadius: '6px',
-              color: currentPage >= totalPages ? '#4b5563' : '#e0e0e0',
-              fontSize: '14px',
-              fontWeight: '500',
+              padding: '8px 18px',
+              background: 'transparent',
+              border: `1px solid ${currentPage >= totalPages ? 'var(--border)' : 'var(--border-mid)'}`,
+              borderRadius: '3px',
+              color: currentPage >= totalPages ? 'var(--text-dim)' : 'var(--text-mid)',
+              fontSize: '12px',
+              fontFamily: "'DM Sans', sans-serif",
+              letterSpacing: '0.04em',
               cursor: currentPage >= totalPages ? 'default' : 'pointer',
-              minHeight: '44px',
-              transition: 'background 0.15s',
+              minHeight: '38px',
+              transition: 'border-color var(--transition), color var(--transition)',
+              opacity: currentPage >= totalPages ? 0.4 : 1,
             }}
             onMouseEnter={(e) => {
-              if (currentPage < totalPages) e.currentTarget.style.background = '#1a4a80'
+              if (currentPage < totalPages) {
+                e.currentTarget.style.borderColor = 'var(--gold-dim)'
+                e.currentTarget.style.color = 'var(--text)'
+              }
             }}
             onMouseLeave={(e) => {
-              if (currentPage < totalPages) e.currentTarget.style.background = '#0f3460'
+              if (currentPage < totalPages) {
+                e.currentTarget.style.borderColor = 'var(--border-mid)'
+                e.currentTarget.style.color = 'var(--text-mid)'
+              }
             }}
             aria-label="Next page"
           >
