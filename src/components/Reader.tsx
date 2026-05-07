@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import * as pdfjsLib from 'pdfjs-dist'
-import type { PDFDocumentProxy } from 'pdfjs-dist'
+import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { useStore } from '../App'
 import { useShallow } from 'zustand/react/shallow'
 import type { Sidecar } from '../types'
 import { getDeviceId } from '../types'
-import { getCachedPDF } from '../lib/db'
+import { getCachedPDF, cachePDF } from '../lib/db'
 import { downloadBlob } from '../lib/drive'
 import { loadSidecar } from '../lib/sidecar'
 import { BookmarksPanel } from './Bookmarks'
@@ -53,6 +53,31 @@ function readScroll(bookId: string | undefined): { x: number; y: number } | null
   return null
 }
 
+const PAGE_KEY_PREFIX = 'rdsy:page:'
+
+type LocalPage = { page: number; updatedAt: string }
+
+function readPageLocal(bookId: string | undefined): LocalPage | null {
+  if (!bookId || typeof localStorage === 'undefined') return null
+  const raw = localStorage.getItem(PAGE_KEY_PREFIX + bookId)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as LocalPage
+    if (typeof parsed.page === 'number' && typeof parsed.updatedAt === 'string') return parsed
+  } catch { /* ignore */ }
+  return null
+}
+
+function savePageLocal(bookId: string | undefined, page: number) {
+  if (!bookId || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(
+      PAGE_KEY_PREFIX + bookId,
+      JSON.stringify({ page, updatedAt: new Date().toISOString() })
+    )
+  } catch { /* ignore */ }
+}
+
 export default function Reader() {
   const { bookId } = useParams<{ bookId: string }>()
   const navigate = useNavigate()
@@ -89,10 +114,18 @@ export default function Reader() {
   const startPageRef = useRef<number>(1)
   const objectUrlRef = useRef<string | null>(null)
   const zoomRef = useRef<number>(zoom)
-  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => {
+    zoomRef.current = zoom
+    desiredZoomRef.current = zoom
+  }, [zoom])
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const pendingScrollRef = useRef<{ x: number; y: number } | null>(null)
   const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const leftRenderTaskRef = useRef<RenderTask | null>(null)
+  const rightRenderTaskRef = useRef<RenderTask | null>(null)
+  const desiredZoomRef = useRef<number>(zoom)
+  const zoomDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasLoadedRef = useRef<boolean>(false)
 
   // On desktop: schedule the top bar to hide after a brief idle period
   useEffect(() => {
@@ -129,7 +162,7 @@ export default function Reader() {
     }
   }
 
-  // Persist view mode + zoom
+  // Persist view mode + zoom + current page
   useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode) } catch { /* ignore */ }
   }, [viewMode])
@@ -137,6 +170,10 @@ export default function Reader() {
     if (!bookId) return
     try { localStorage.setItem(ZOOM_KEY_PREFIX + bookId, String(zoom)) } catch { /* ignore */ }
   }, [zoom, bookId])
+  useEffect(() => {
+    if (!bookId || loading) return
+    savePageLocal(bookId, currentPage)
+  }, [bookId, currentPage, loading])
 
   // Spread layout: pair from page 1 → (1,2), (3,4), …
   // leftPage is always odd. If currentPage is even we render the pair starting at currentPage-1.
@@ -156,49 +193,51 @@ export default function Reader() {
       try {
         const { accessToken } = auth as { accessToken: string; status: 'authenticated'; expiresAt: number }
 
-        // Try cache first
+        // Try cache first; cache after download if not present
         let blob: Blob | undefined = await getCachedPDF(bookId!)
 
         if (!blob) {
           blob = await downloadBlob(accessToken, bookId!)
+          cachePDF(bookId!, blob).catch(() => {})
         }
 
         if (cancelled) return
 
-        const arrayBuffer = await blob.arrayBuffer()
-
-        if (cancelled) return
-
-        // Revoke any prior object URL
+        // Revoke any prior object URL, create a new one for streaming parse
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+        const blobUrl = URL.createObjectURL(blob)
+        objectUrlRef.current = blobUrl
 
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
-        const pdf = await loadingTask.promise
+        // Parse PDF and load sidecar in parallel — faster than sequential
+        let [pdf, freshSidecar] = await Promise.all([
+          pdfjsLib.getDocument({ url: blobUrl }).promise,
+          loadSidecar(accessToken, bookId!, book?.sidecarDriveId),
+        ])
 
         if (cancelled) {
           pdf.destroy()
           return
+        }
+
+        // Use localStorage snapshot as tiebreaker for same-device IDB race
+        const localPage = readPageLocal(bookId)
+        if (localPage && localPage.updatedAt > freshSidecar.progress.updatedAt) {
+          freshSidecar = {
+            ...freshSidecar,
+            progress: { ...freshSidecar.progress, page: localPage.page, updatedAt: localPage.updatedAt },
+          }
         }
 
         pdfDocRef.current = pdf
         setTotalPages(pdf.numPages)
-
-        // Merge Drive + IDB cache to get the freshest sidecar across all devices
-        const freshSidecar = await loadSidecar(accessToken, bookId!, book?.sidecarDriveId)
-        if (cancelled) {
-          pdf.destroy()
-          return
-        }
         setSidecar(freshSidecar)
 
-        const initialPage = freshSidecar.progress.page
-        const clamped = Math.max(1, Math.min(initialPage, pdf.numPages))
+        const clamped = Math.max(1, Math.min(freshSidecar.progress.page, pdf.numPages))
         setCurrentPage(clamped)
         startPageRef.current = clamped
-
-        // Queue scroll restore for after the first render
         pendingScrollRef.current = readScroll(bookId)
 
+        hasLoadedRef.current = true
         setLoading(false)
       } catch (err) {
         if (cancelled) return
@@ -227,7 +266,8 @@ export default function Reader() {
     const renderTo = async (
       pageNum: number | null,
       canvas: HTMLCanvasElement | null,
-      baseWidth: number
+      baseWidth: number,
+      taskRef: React.MutableRefObject<RenderTask | null>
     ) => {
       if (!canvas) return
       if (pageNum === null || pageNum < 1 || pageNum > pdf.numPages) {
@@ -237,33 +277,56 @@ export default function Reader() {
         return
       }
       canvas.style.display = 'block'
+
+      // Cancel any in-flight render for this canvas
+      if (taskRef.current) {
+        taskRef.current.cancel()
+        taskRef.current = null
+      }
+
       const page = await pdf.getPage(pageNum)
       const baseViewport = page.getViewport({ scale: 1 })
       const fitScale = baseWidth / baseViewport.width
       const renderScale = fitScale * zoom * dpr
       const v = page.getViewport({ scale: renderScale })
+
+      // Render into an offscreen canvas so the visible canvas never goes blank
+      const offscreen = document.createElement('canvas')
+      offscreen.width = v.width
+      offscreen.height = v.height
+      const ctx = offscreen.getContext('2d')
+      if (!ctx) return
+
+      const task = page.render({ canvasContext: ctx, viewport: v })
+      taskRef.current = task
+
+      try {
+        await task.promise
+      } catch (err: unknown) {
+        taskRef.current = null
+        if (err instanceof Error && err.message?.includes('cancelled')) return
+        console.error('[Reader] render error:', err)
+        return
+      }
+      taskRef.current = null
+
+      // Atomically swap — resize and copy in one paint frame, no blank gap
       canvas.width = v.width
       canvas.height = v.height
       canvas.style.width = `${v.width / dpr}px`
       canvas.style.height = `${v.height / dpr}px`
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      try {
-        await page.render({ canvasContext: ctx, viewport: v, canvas }).promise
-      } catch (err: unknown) {
-        if (err instanceof Error && err.message?.includes('cancelled')) return
-        console.error('[Reader] render error:', err)
-      }
+      const destCtx = canvas.getContext('2d')
+      if (destCtx) destCtx.drawImage(offscreen, 0, 0)
     }
 
     if (viewMode === 'single') {
-      await renderTo(currentPage, leftCanvasRef.current, containerWidth)
-      await renderTo(null, rightCanvasRef.current, containerWidth)
+      await renderTo(currentPage, leftCanvasRef.current, containerWidth, leftRenderTaskRef)
+      await renderTo(null, rightCanvasRef.current, containerWidth, rightRenderTaskRef)
     } else {
       const halfWidth = Math.max(50, (containerWidth - SPREAD_GAP_PX) / 2)
       await Promise.all([
-        renderTo(leftPage, leftCanvasRef.current, halfWidth),
-        renderTo(rightPage, rightCanvasRef.current, halfWidth),
+        renderTo(leftPage, leftCanvasRef.current, halfWidth, leftRenderTaskRef),
+        renderTo(rightPage, rightCanvasRef.current, halfWidth, rightRenderTaskRef),
       ])
     }
   }, [currentPage, viewMode, zoom, leftPage, rightPage])
@@ -328,7 +391,12 @@ export default function Reader() {
       if (!e.ctrlKey) return
       e.preventDefault()
       const delta = -Math.sign(e.deltaY) * 0.1
-      setZoom((z) => clamp(z + delta))
+      desiredZoomRef.current = clamp(desiredZoomRef.current + delta)
+      if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
+      zoomDebounceRef.current = setTimeout(() => {
+        setZoom(desiredZoomRef.current)
+        zoomDebounceRef.current = null
+      }, 120)
     }
 
     let pinchStartDist = 0
@@ -350,7 +418,12 @@ export default function Reader() {
         const dy = e.touches[0].clientY - e.touches[1].clientY
         const dist = Math.hypot(dx, dy)
         const ratio = dist / pinchStartDist
-        setZoom(clamp(pinchStartZoom * ratio))
+        desiredZoomRef.current = clamp(pinchStartZoom * ratio)
+        if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
+        zoomDebounceRef.current = setTimeout(() => {
+          setZoom(desiredZoomRef.current)
+          zoomDebounceRef.current = null
+        }, 80)
       }
     }
 
@@ -368,6 +441,10 @@ export default function Reader() {
       container.removeEventListener('touchmove', onTouchMove)
       container.removeEventListener('touchend', onTouchEnd)
       container.removeEventListener('touchcancel', onTouchEnd)
+      if (zoomDebounceRef.current) {
+        clearTimeout(zoomDebounceRef.current)
+        zoomDebounceRef.current = null
+      }
     }
   }, [])
 
@@ -417,6 +494,9 @@ export default function Reader() {
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
 
+      // Skip if PDF never finished loading (e.g. React Strict Mode fake unmount)
+      if (!hasLoadedRef.current) return
+
       const sc = sidecarAtUnmount.current
       if (!sc) return
 
@@ -438,6 +518,9 @@ export default function Reader() {
         },
         stats: { sessions: [...sc.stats.sessions, session] },
       }
+
+      // Synchronous localStorage snapshot before async IDB write (prevents race on quick re-open)
+      savePageLocal(bookId, currentPageAtUnmount.current)
 
       // Fire-and-forget save via the single writer
       commitSidecar(bookId!, updated).catch(() => {})

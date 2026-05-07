@@ -96,7 +96,7 @@ export function makeSidecar(bookId: string): Sidecar {
   return {
     version: 1,
     bookId,
-    progress: { page: 1, scrollPct: 0, updatedAt: new Date().toISOString(), updatedBy: getDeviceId() },
+    progress: { page: 1, scrollPct: 0, updatedAt: new Date(0).toISOString(), updatedBy: getDeviceId() },
     bookmarks: [],
     highlights: [],
     stats: { sessions: [] },
