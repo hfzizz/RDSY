@@ -298,7 +298,7 @@ export default function Reader() {
       const ctx = offscreen.getContext('2d')
       if (!ctx) return
 
-      const task = page.render({ canvasContext: ctx, viewport: v })
+      const task = page.render({ canvasContext: ctx, viewport: v, canvas: offscreen })
       taskRef.current = task
 
       try {
