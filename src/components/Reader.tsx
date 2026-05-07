@@ -126,6 +126,7 @@ export default function Reader() {
   const desiredZoomRef = useRef<number>(zoom)
   const zoomDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLoadedRef = useRef<boolean>(false)
+  const canvasWrapperRef = useRef<HTMLDivElement | null>(null)
 
   // On desktop: schedule the top bar to hide after a brief idle period
   useEffect(() => {
@@ -329,6 +330,10 @@ export default function Reader() {
         renderTo(rightPage, rightCanvasRef.current, halfWidth, rightRenderTaskRef),
       ])
     }
+    // Canvas is now rendered at the real zoom level — remove the CSS preview scale
+    if (canvasWrapperRef.current) {
+      canvasWrapperRef.current.style.transform = 'none'
+    }
   }, [currentPage, viewMode, zoom, leftPage, rightPage])
 
   useEffect(() => {
@@ -392,11 +397,15 @@ export default function Reader() {
       e.preventDefault()
       const delta = -Math.sign(e.deltaY) * 0.1
       desiredZoomRef.current = clamp(desiredZoomRef.current + delta)
+      // Immediate CSS preview — no PDF.js re-render yet
+      if (canvasWrapperRef.current) {
+        canvasWrapperRef.current.style.transform = `scale(${desiredZoomRef.current / zoomRef.current})`
+      }
       if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
       zoomDebounceRef.current = setTimeout(() => {
         setZoom(desiredZoomRef.current)
         zoomDebounceRef.current = null
-      }, 120)
+      }, 160)
     }
 
     let pinchStartDist = 0
@@ -419,11 +428,15 @@ export default function Reader() {
         const dist = Math.hypot(dx, dy)
         const ratio = dist / pinchStartDist
         desiredZoomRef.current = clamp(pinchStartZoom * ratio)
+        // Immediate CSS preview
+        if (canvasWrapperRef.current) {
+          canvasWrapperRef.current.style.transform = `scale(${desiredZoomRef.current / zoomRef.current})`
+        }
         if (zoomDebounceRef.current) clearTimeout(zoomDebounceRef.current)
         zoomDebounceRef.current = setTimeout(() => {
           setZoom(desiredZoomRef.current)
           zoomDebounceRef.current = null
-        }, 80)
+        }, 100)
       }
     }
 
@@ -771,7 +784,6 @@ export default function Reader() {
               flexDirection: 'row',
               alignItems: 'flex-start',
               justifyContent: 'center',
-              gap: viewMode === 'spread' ? `${SPREAD_GAP_PX}px` : 0,
               padding: '8px',
               width: 'fit-content',
               minWidth: '100%',
@@ -779,17 +791,22 @@ export default function Reader() {
               boxSizing: 'border-box',
             }}
           >
-            <canvas
-              ref={leftCanvasRef}
-              style={{ display: 'block', flexShrink: 0 }}
-            />
-            <canvas
-              ref={rightCanvasRef}
-              style={{
-                display: viewMode === 'spread' ? 'block' : 'none',
-                flexShrink: 0,
-              }}
-            />
+            <div
+              ref={canvasWrapperRef}
+              style={{ display: 'flex', gap: viewMode === 'spread' ? `${SPREAD_GAP_PX}px` : 0, flexShrink: 0, transformOrigin: 'top center' }}
+            >
+              <canvas
+                ref={leftCanvasRef}
+                style={{ display: 'block', flexShrink: 0 }}
+              />
+              <canvas
+                ref={rightCanvasRef}
+                style={{
+                  display: viewMode === 'spread' ? 'block' : 'none',
+                  flexShrink: 0,
+                }}
+              />
+            </div>
           </div>
         )}
       </div>
