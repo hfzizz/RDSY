@@ -47,7 +47,10 @@ function extractHashToken(): AuthState | null {
 
 function loadAuthFromSession(): AuthState {
   const fromHash = extractHashToken()
-  if (fromHash) return fromHash
+  if (fromHash) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(fromHash))
+    return fromHash
+  }
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return { status: 'unauthenticated' }
