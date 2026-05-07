@@ -54,9 +54,12 @@ function loadAuthFromSession(): AuthState {
 }
 
 function startOAuth() {
+  const redirectUri = window.location.origin
+  console.log('[auth] redirect_uri:', redirectUri)
+  console.log('[auth] client_id:', import.meta.env.VITE_GOOGLE_CLIENT_ID)
   const params = new URLSearchParams({
     client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
-    redirect_uri: window.location.origin,
+    redirect_uri: redirectUri,
     response_type: 'token',
     scope: 'https://www.googleapis.com/auth/drive.file',
     include_granted_scopes: 'true',
