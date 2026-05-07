@@ -415,8 +415,8 @@ export default function Library() {
         title={uploading ? 'Uploading…' : 'Upload PDF'}
         style={{
           position: 'fixed',
-          bottom: '28px',
-          right: '28px',
+          bottom: 'calc(28px + env(safe-area-inset-bottom))',
+          right: 'calc(28px + env(safe-area-inset-right))',
           width: '52px',
           height: '52px',
           borderRadius: '50%',
