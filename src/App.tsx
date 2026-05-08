@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { AuthState, BookEntry, SyncStatus, Sidecar } from './types'
+import { loadStoredAuth, saveAuth, signIn, trySilentSignIn } from './lib/auth'
 
 const LibraryPage = lazy(() => import('./components/Library'))
 const ReaderPage = lazy(() => import('./components/Reader'))
@@ -19,82 +20,14 @@ interface StoreState {
   updateSidecar: (bookId: string, sidecar: Sidecar, sidecarDriveId?: string) => void
 }
 
-const SESSION_KEY = 'rdsy_auth'
-const SILENT_KEY = 'rdsy_silent_refresh'
-
-function extractHashToken(): AuthState | null {
-  const hash = window.location.hash.slice(1)
-  if (!hash) return null
-  const p = new URLSearchParams(hash)
-  const error = p.get('error')
-  if (error) {
-    window.history.replaceState(null, '', window.location.pathname)
-    sessionStorage.removeItem(SILENT_KEY)
-    return null
-  }
-  const token = p.get('access_token')
-  const expiresIn = p.get('expires_in')
-  if (token && expiresIn) {
-    window.history.replaceState(null, '', window.location.pathname)
-    sessionStorage.removeItem(SILENT_KEY)
-    return { status: 'authenticated', accessToken: token, expiresAt: Date.now() + Number(expiresIn) * 1000 }
-  }
-  return null
-}
-
-function loadAuthFromSession(): AuthState {
-  const fromHash = extractHashToken()
-  if (fromHash) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(fromHash))
-    return fromHash
-  }
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) return { status: 'unauthenticated' }
-    const parsed = JSON.parse(raw) as AuthState
-    if (parsed.status === 'authenticated') {
-      if (parsed.expiresAt > Date.now()) return parsed
-      if (!sessionStorage.getItem(SILENT_KEY)) {
-        sessionStorage.setItem(SILENT_KEY, '1')
-        const params = new URLSearchParams({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
-          redirect_uri: window.location.origin,
-          response_type: 'token',
-          scope: 'https://www.googleapis.com/auth/drive.file',
-          prompt: 'none',
-        })
-        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
-        return { status: 'authenticated', accessToken: '', expiresAt: Date.now() + 30000 }
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return { status: 'unauthenticated' }
-}
-
-function startOAuth() {
-  const params = new URLSearchParams({
-    client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
-    redirect_uri: window.location.origin,
-    response_type: 'token',
-    scope: 'https://www.googleapis.com/auth/drive.file',
-    include_granted_scopes: 'true',
-  })
-  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
-}
 
 export const useStore = create<StoreState>()((set, get) => ({
-  auth: loadAuthFromSession(),
+  auth: loadStoredAuth(),
   books: [],
   syncStatus: 'idle',
   folderId: null,
   setAuth: (auth) => {
-    if (auth.status === 'authenticated') {
-      localStorage.setItem(SESSION_KEY, JSON.stringify(auth))
-    } else {
-      localStorage.removeItem(SESSION_KEY)
-    }
+    saveAuth(auth)
     set({ auth })
   },
   setBooks: (books) => set({ books }),
@@ -116,7 +49,7 @@ const syncColors: Record<SyncStatus, string> = {
   offline: 'var(--grey)',
 }
 
-function SignInScreen() {
+function SignInScreen({ onSignIn }: { onSignIn: () => void }) {
 
   return (
     <div style={{
@@ -193,7 +126,7 @@ function SignInScreen() {
         </div>
 
         <button
-          onClick={() => startOAuth()}
+          onClick={onSignIn}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -326,11 +259,36 @@ function AuthenticatedShell() {
 }
 
 export default function App() {
-  const auth = useStore((s) => s.auth)
+  const { auth, setAuth } = useStore(useShallow(s => ({ auth: s.auth, setAuth: s.setAuth })))
+  const [silentLoading, setSilentLoading] = useState(auth.status === 'unauthenticated')
+
+  useEffect(() => {
+    if (auth.status !== 'unauthenticated') { setSilentLoading(false); return }
+    trySilentSignIn(
+      (token, expiresAt) => {
+        setAuth({ status: 'authenticated', accessToken: token, expiresAt })
+        setSilentLoading(false)
+      },
+      () => setSilentLoading(false),
+    )
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSignIn = useCallback(() => {
+    signIn((token, expiresAt) => setAuth({ status: 'authenticated', accessToken: token, expiresAt }))
+  }, [setAuth])
+
+  if (silentLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '32px', height: '32px', border: '2px solid var(--border-mid)', borderTopColor: 'var(--gold)', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
 
   return (
     <BrowserRouter>
-      {auth.status === 'unauthenticated' ? <SignInScreen /> : <AuthenticatedShell />}
+      {auth.status === 'unauthenticated' ? <SignInScreen onSignIn={handleSignIn} /> : <AuthenticatedShell />}
     </BrowserRouter>
   )
 }
