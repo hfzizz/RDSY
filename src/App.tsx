@@ -3,9 +3,6 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { AuthState, BookEntry, SyncStatus, Sidecar } from './types'
-import { cacheSidecar, enqueueWrite } from './lib/db'
-import { saveSidecar } from './lib/sidecar'
-import { ensureLibraryFolder } from './lib/drive'
 
 const LibraryPage = lazy(() => import('./components/Library'))
 const ReaderPage = lazy(() => import('./components/Reader'))
@@ -19,7 +16,7 @@ interface StoreState {
   setBooks: (books: BookEntry[]) => void
   setSyncStatus: (status: SyncStatus) => void
   setFolderId: (id: string | null) => void
-  commitSidecar: (bookId: string, sidecar: Sidecar) => Promise<void>
+  updateSidecar: (bookId: string, sidecar: Sidecar, sidecarDriveId?: string) => void
 }
 
 const SESSION_KEY = 'rdsy_auth'
@@ -103,48 +100,13 @@ export const useStore = create<StoreState>()((set, get) => ({
   setBooks: (books) => set({ books }),
   setSyncStatus: (syncStatus) => set({ syncStatus }),
   setFolderId: (folderId) => set({ folderId }),
-  commitSidecar: async (bookId, sidecar) => {
-    // 1. Persist to IDB immediately (durable local write)
-    await cacheSidecar(bookId, sidecar)
-
-    // 2. Update the in-memory store
-    set((state) => {
-      const idx = state.books.findIndex((b) => b.driveId === bookId)
-      if (idx === -1) return state
-      const next = state.books.slice()
-      next[idx] = { ...next[idx], sidecar }
-      return { books: next }
-    })
-
-    // 3. Enqueue for offline safety
-    await enqueueWrite(bookId, sidecar)
-
-    // 4. Push to Drive if online and authenticated
-    const { auth, books } = get()
-    if (auth.status !== 'authenticated' || !navigator.onLine) return
-    const { accessToken } = auth as { accessToken: string; status: 'authenticated'; expiresAt: number }
-
-    try {
-      let { folderId } = get()
-      if (!folderId) {
-        folderId = await ensureLibraryFolder(accessToken)
-        set({ folderId })
-      }
-      const entry = books.find((b) => b.driveId === bookId)
-      const newId = await saveSidecar(accessToken, folderId, sidecar, entry?.sidecarDriveId)
-      if (newId && newId !== 'queued' && entry && !entry.sidecarDriveId) {
-        set((state) => {
-          const idx = state.books.findIndex((b) => b.driveId === bookId)
-          if (idx === -1) return state
-          const next = state.books.slice()
-          next[idx] = { ...next[idx], sidecarDriveId: newId }
-          return { books: next }
-        })
-      }
-    } catch {
-      // Already enqueued — Drive failure is non-fatal
-    }
-  },
+  updateSidecar: (bookId, sidecar, sidecarDriveId) => set((state) => {
+    const idx = state.books.findIndex((b) => b.driveId === bookId)
+    if (idx === -1) return state
+    const next = state.books.slice()
+    next[idx] = { ...next[idx], sidecar, ...(sidecarDriveId ? { sidecarDriveId } : {}) }
+    return { books: next }
+  }),
 }))
 
 const syncColors: Record<SyncStatus, string> = {

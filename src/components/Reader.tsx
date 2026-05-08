@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useStore } from '../App'
 import { useShallow } from 'zustand/react/shallow'
@@ -12,18 +12,24 @@ import {
   readViewMode, saveViewMode, saveScroll,
   MIN_ZOOM, MAX_ZOOM, ZOOM_STEP, SPREAD_GAP_PX,
 } from '../lib/readerStorage'
+import { syncManager } from '../lib/SyncManager'
 
 export default function Reader() {
   const { bookId } = useParams<{ bookId: string }>()
   const navigate = useNavigate()
-  const { auth, books, commitSidecar } = useStore(useShallow(s => ({
+  const { auth, books, updateSidecar } = useStore(useShallow(s => ({
     auth: s.auth,
     books: s.books,
-    commitSidecar: s.commitSidecar,
+    updateSidecar: s.updateSidecar,
   })))
 
   const accessToken = auth.status === 'authenticated' ? auth.accessToken : ''
   const book = books.find(b => b.driveId === bookId)
+
+  const commit = useCallback(async (id: string, sidecar: Sidecar) => {
+    const newDriveId = await syncManager.commitSidecar(accessToken, id, sidecar, book?.sidecarDriveId)
+    updateSidecar(id, sidecar, newDriveId !== 'queued' ? newDriveId : undefined)
+  }, [accessToken, book?.sidecarDriveId, updateSidecar])
 
   // UI state
   const [viewMode, setViewMode] = useState(() => readViewMode())
@@ -65,7 +71,7 @@ export default function Reader() {
     totalPages,
     hasLoadedRef,
     viewMode,
-    commitSidecar,
+    commit,
   )
 
   const leftPage = viewMode === 'spread' && currentPage % 2 === 0 ? currentPage - 1 : currentPage
@@ -187,7 +193,7 @@ export default function Reader() {
 
   function handleSidecarChange(updated: Sidecar) {
     setSidecar(updated)
-    commitSidecar(bookId!, updated).catch(() => {})
+    commit(bookId!, updated).catch(() => {})
   }
 
   // ── Derived display values ────────────────────────────────────────────────

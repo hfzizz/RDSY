@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '../App'
 import type { BookEntry } from '../types'
-import { syncLibrary, pushPendingWrites } from '../lib/sync'
 import { ensureLibraryFolder } from '../lib/drive'
+import { syncManager } from '../lib/SyncManager'
 import { uploadPDF, downloadBlob } from '../lib/drive'
 import { setPinned } from '../lib/db'
 import { cachePDF, removeCachedPDF } from '../lib/opfs'
@@ -177,7 +177,7 @@ export default function Library() {
     const { accessToken } = auth
     setSyncStatus('syncing')
     try {
-      const result = await syncLibrary(accessToken)
+      const result = await syncManager.syncLibrary(accessToken)
       setBooks(result)
       setSyncStatus('idle')
     } catch (err) {
@@ -194,9 +194,10 @@ export default function Library() {
       try {
         const resolved = folderId ?? await ensureLibraryFolder(accessToken)
         if (!folderId) setFolderId(resolved)
-        await pushPendingWrites(accessToken, resolved)
+        syncManager.setFolderId(resolved)
+        await syncManager.flushQueue(accessToken)
       } catch (err) {
-        console.warn('[Library] pushPendingWrites failed:', err)
+        console.warn('[Library] flushQueue failed:', err)
       }
     })()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
