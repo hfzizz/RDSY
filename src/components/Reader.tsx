@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useStore } from '../App'
+import { useStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import type { Sidecar } from '../types'
 import { useBookLoader } from '../hooks/useBookLoader'

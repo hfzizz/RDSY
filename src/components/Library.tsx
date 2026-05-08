@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
-import { useStore } from '../App'
+import { useStore } from '../store'
 import type { BookEntry } from '../types'
 import { ensureLibraryFolder } from '../lib/drive'
 import { syncManager } from '../lib/SyncManager'
