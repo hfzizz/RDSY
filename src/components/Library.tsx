@@ -6,7 +6,8 @@ import type { BookEntry } from '../types'
 import { syncLibrary, pushPendingWrites } from '../lib/sync'
 import { ensureLibraryFolder } from '../lib/drive'
 import { uploadPDF, downloadBlob } from '../lib/drive'
-import { setPinned, removeCachedPDF, cachePDF } from '../lib/db'
+import { setPinned } from '../lib/db'
+import { cachePDF, removeCachedPDF } from '../lib/opfs'
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000
 

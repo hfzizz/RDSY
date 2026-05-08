@@ -1,7 +1,8 @@
 import type { BookEntry, DriveFile } from '../types';
 import { SIDECAR_SUFFIX } from '../types';
 import { ensureLibraryFolder, listPDFs, listSidecars, upsertJSON } from './drive';
-import { getPinnedIds, hasCachedPDF, dequeueWrites, clearQueueEntry } from './db';
+import { getPinnedIds, dequeueWrites, clearQueueEntry } from './db'
+import { hasCachedPDF } from './opfs';
 import { loadSidecar } from './sidecar';
 
 /**
